@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { TinyliciousClient } from "@fluidframework/tinylicious-client";
-import { ContainerSchema, ISharedMap, LoadableObjectRecord, SharedMap } from 'fluid-framework';
+import { ContainerSchema, IFluidContainer, ISharedMap, LoadableObjectRecord, SharedMap } from 'fluid-framework';
 import './App.css';
 
 interface IFluidData extends LoadableObjectRecord {
@@ -8,7 +8,7 @@ interface IFluidData extends LoadableObjectRecord {
 }
 
 function App() {
-  const getFluidData = async () => {
+  const getFluidContainer = async () => {
 
     // TODO 1: Configure the container.
     const client = new TinyliciousClient();
@@ -27,17 +27,19 @@ function App() {
       ({ container } = await client.getContainer(containerId, containerSchema));
     }
 
-    // TODO 3: Return the Fluid timestamp object.
-    return container.initialObjects as IFluidData;
+    // TODO 3: Return the Fluid container.
+    return container;
   }
 
+  const [fluidContainer, setFluidContainer] = useState<IFluidContainer>();
   const [fluidSharedObjects, setFluidSharedObjects] = useState<IFluidData>();
 
   useEffect(() => {
     if (fluidSharedObjects !== undefined) return;
     (async () => {
-      const data = await getFluidData();
-      setFluidSharedObjects(data);
+      const container = await getFluidContainer();
+      setFluidContainer(container);
+      setFluidSharedObjects(container.initialObjects as IFluidData);
     })();
   }, [fluidSharedObjects]);
 
@@ -62,6 +64,29 @@ function App() {
     }
   }, [fluidSharedObjects]);
 
+  const [isDirty, setIsDirty] = useState<boolean>();
+
+  useEffect(() => {
+    if (fluidContainer === undefined) return;
+
+    const updateIsDirty = (event: string) => () => {
+      console.info(`${event}: ${fluidContainer.isDirty}`);
+      setIsDirty(fluidContainer.isDirty);
+    };
+    const handleSaved = updateIsDirty("saved");
+    const handleDirty = updateIsDirty("dirty");
+    fluidContainer.on("saved", handleSaved);
+    fluidContainer.on("dirty", handleDirty);
+    if (isDirty === undefined) {
+      updateIsDirty("Init")();
+    }
+
+    return () => {
+      fluidContainer.off("saved", handleSaved);
+      fluidContainer.off("dirty", handleDirty);
+    }
+  }, [fluidContainer, isDirty]);
+
   if ((fluidSharedObjects === undefined) || (localTimestamp === undefined)) {
     return <div className="App" />
   }
@@ -71,7 +96,8 @@ function App() {
       <button onClick={() => fluidSharedObjects.sharedTimestamp.set("time", Date.now().toString())}>
         Get Time
       </button>
-      <span>{localTimestamp.time}</span>
+      <p>{localTimestamp.time}</p>
+      <p>{isDirty ? "dirty" : "clean"}</p>
     </div>
   );
 }
